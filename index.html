@@ -1,0 +1,74 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>HealthClaim Intelligence</title>
+<style>
+:root{--bg:#f5f7f6;--card:#fff;--ink:#14231e;--mut:#5d6f68;--br:#dbe3df;--g:#0f7b5f;--r:#c0392b;--a:#b9770e}
+@media(prefers-color-scheme:dark){:root{--bg:#101815;--card:#18221e;--ink:#e6efeb;--mut:#93a69e;--br:#2a3833;--g:#35b891;--r:#ef7a6c;--a:#e0a43a}}
+*{box-sizing:border-box}body{margin:0;font:14px/1.45 system-ui,sans-serif;background:var(--bg);color:var(--ink)}
+header{display:flex;align-items:center;gap:16px;padding:10px 20px;background:var(--card);border-bottom:1px solid var(--br);flex-wrap:wrap}
+h1{font-size:17px;margin:0;color:var(--g)}nav{display:flex;gap:4px;flex:1;flex-wrap:wrap}
+nav button,.btn{border:1px solid var(--br);background:var(--card);color:var(--ink);padding:6px 12px;border-radius:6px;cursor:pointer;font:inherit}
+nav button.on,.btn.p{background:var(--g);color:#fff;border-color:var(--g)}main{padding:20px;max-width:1200px;margin:auto}
+.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:12px;margin-bottom:16px}
+.card{background:var(--card);border:1px solid var(--br);border-radius:8px;padding:14px;margin-bottom:16px}
+.k{font-size:12px;color:var(--mut)}.v{font-size:22px;font-weight:600}.wrap{overflow-x:auto}
+table{border-collapse:collapse;width:100%}th,td{text-align:left;padding:6px 8px;border-bottom:1px solid var(--br);white-space:nowrap}th{color:var(--mut);font-weight:500;font-size:12px}
+.tag{padding:2px 8px;border-radius:10px;font-size:12px;border:1px solid var(--br)}.error{color:var(--r)}.warning{color:var(--a)}
+input,select,textarea{font:inherit;padding:6px 8px;border:1px solid var(--br);border-radius:6px;background:var(--card);color:var(--ink)}
+textarea{width:100%;height:120px;font-family:monospace}.bar{height:8px;background:var(--g);border-radius:4px}
+#login{max-width:320px;margin:15vh auto;display:flex;flex-direction:column;gap:10px}.row{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:10px}
+</style></head><body>
+<div id="login" class="card"><h1>HealthClaim Intelligence</h1><input id="u" placeholder="Username" value="admin"><input id="p" type="password" placeholder="Password"><button class="btn p" onclick="login()">Sign in</button><div id="le" class="error"></div></div>
+<div id="app" hidden><header><h1>HealthClaim Intelligence</h1><nav id="nav"></nav><span id="who" class="k"></span><button class="btn" onclick="logout()">Sign out</button></header><main id="main"></main></div>
+<script>
+const $=s=>document.querySelector(s), money=n=>n==null?'-':'GH¢'+Number(n).toLocaleString(undefined,{minimumFractionDigits:2,maximumFractionDigits:2});
+const esc=s=>String(s??'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+let me=null,tab='dashboard',filter={status:'',q:''};
+async function api(p,m='GET',b){const r=await fetch('/api/'+p,{method:m,headers:{'Content-Type':'application/json'},body:b?JSON.stringify(b):undefined});
+ const d=await r.json();if(r.status==401&&me){location.reload()}if(!r.ok)throw new Error(d.error||'Error');return d}
+async function login(){try{me=await api('login','POST',{username:$('#u').value,password:$('#p').value});start()}catch(e){$('#le').textContent=e.message}}
+async function logout(){await api('logout','POST');location.reload()}
+function start(){$('#login').hidden=true;$('#app').hidden=false;$('#who').textContent=me.username+' ('+me.role+')';
+ const tabs=[['dashboard','Dashboard'],['claims','Claims'],['import','Import'],['rules','Rules & tariffs'],['recon','Reconciliation']];if(me.role=='admin')tabs.push(['audit','Audit log']);
+ $('#nav').innerHTML=tabs.map(t=>`<button data-t="${t[0]}" onclick="go('${t[0]}')">${t[1]}</button>`).join('');go('dashboard')}
+function go(t){tab=t;document.querySelectorAll('nav button').forEach(b=>b.classList.toggle('on',b.dataset.t==t));({dashboard,claims,import:imp,rules,recon,audit})[t]().catch(e=>$('#main').innerHTML='<p class="error">'+esc(e.message)+'</p>')}
+async function dashboard(){const d=await api('dashboard');const mx=Math.max(1,...Object.values(d.rejection_categories));
+ $('#main').innerHTML=`<div class="grid">${[['Total claims',d.total_claims],['First-pass acceptance',d.first_pass_acceptance+'%'],['Rejection rate',d.rejection_rate+'%'],['Total claimed',money(d.total_claimed)],['Total paid',money(d.total_paid)],['Outstanding',money(d.outstanding)],['Drafts with flags',d.flagged_drafts]].map(x=>`<div class="card"><div class="k">${x[0]}</div><div class="v">${x[1]}</div></div>`).join('')}</div>
+ <div class="grid" style="grid-template-columns:repeat(auto-fit,minmax(320px,1fr))"><div class="card"><b>Claims by status</b><table>${Object.entries(d.by_status).map(([s,v])=>`<tr><td>${s}</td><td>${v.count}</td><td>${money(v.claimed)}</td></tr>`).join('')}</table></div>
+ <div class="card"><b>Rejection intelligence</b>${Object.entries(d.rejection_categories).sort((a,b)=>b[1]-a[1]).map(([k,v])=>`<div style="margin-top:8px">${esc(k)} <span class="k">(${v})</span><div class="bar" style="width:${v/mx*100}%"></div></div>`).join('')||'<p class="k">No rejections yet.</p>'}</div>
+ <div class="card"><b>By insurer</b><table><tr><th>Insurer</th><th>Claims</th><th>Rejected</th><th>Paid</th></tr>${Object.entries(d.by_insurer).map(([k,v])=>`<tr><td>${esc(k)}</td><td>${v.claims}</td><td>${v.rejected}</td><td>${money(v.paid)}</td></tr>`).join('')}</table></div></div>
+ ${d.total_claims?'':'<div class="card">No data yet. Go to <b>Import</b> to upload a CSV'+(me.role=='admin'?' or load synthetic demo data.':'.')+'</div>'}`}
+async function claims(){const all=await api('claims');const rows=all.filter(c=>(!filter.status||c.status==filter.status)&&(!filter.q||JSON.stringify(c).toLowerCase().includes(filter.q.toLowerCase())));
+ const st=['Draft','Submitted','Under review','Approved','Rejected','Paid'],w=me.role!='viewer';
+ $('#main').innerHTML=`<div class="row"><input placeholder="Search…" value="${esc(filter.q)}" oninput="filter.q=this.value;clearTimeout(window.t);window.t=setTimeout(claims,300)"><select onchange="filter.status=this.value;claims()"><option value="">All statuses</option>${st.map(s=>`<option ${filter.status==s?'selected':''}>${s}</option>`).join('')}</select>
+ ${w?'<button class="btn p" onclick="runValidate()">Run validation</button>':''}<a class="btn" href="/api/export" target="_blank">Export JSON</a></div>
+ <div class="card wrap"><table><tr><th>Claim</th><th>Insurer</th><th>Patient</th><th>Service</th><th>Code</th><th>Claimed</th><th>Status</th><th>Flags / rejection</th>${w?'<th></th>':''}</tr>
+ ${rows.map(c=>`<tr><td>${esc(c.claim_no)}</td><td>${esc(c.insurer)}</td><td>${esc(c.patient_ref)}</td><td>${esc(c.service_date)}</td><td>${esc(c.service_code)}</td><td>${money(c.claimed_amount)}</td><td><span class="tag">${c.status}</span></td>
+ <td style="white-space:normal;min-width:240px">${c.flags.map(f=>`<div class="${f[0]}">${f[0]=='error'?'✖':'⚠'} ${esc(f[1])}</div>`).join('')}${c.rejection_reason?`<div class="k">${esc(c.rejection_category)}: ${esc(c.rejection_reason)}</div>`:''}</td>
+ ${w?`<td><button class="btn" onclick="edit(${c.id})">Update</button></td>`:''}</tr>`).join('')}</table>${rows.length?'':'<p class="k">No claims match.</p>'}</div>`;window._c=all}
+async function runValidate(){const r=await api('claims/validate','POST');claims()}
+function edit(id){const c=window._c.find(x=>x.id==id);const st=['Draft','Submitted','Under review','Approved','Rejected','Paid'];
+ const d=document.createElement('div');d.className='card';d.style.cssText='position:fixed;top:12vh;left:50%;transform:translateX(-50%);width:min(420px,92vw);z-index:9;box-shadow:0 8px 40px #0006';
+ d.innerHTML=`<b>${esc(c.claim_no)}</b><div class="row" style="flex-direction:column;align-items:stretch;margin-top:10px"><select id="es">${st.map(s=>`<option ${s==c.status?'selected':''}>${s}</option>`).join('')}</select>
+ <input id="ea" placeholder="Approved amount" value="${c.approved_amount??''}"><input id="ep" placeholder="Paid amount" value="${c.paid_amount??''}"><input id="er" placeholder="Rejection reason (required if Rejected)" value="${esc(c.rejection_reason||'')}">
+ <div class="row"><button class="btn p" id="sv">Save</button><button class="btn" onclick="this.closest('.card').remove()">Cancel</button></div><div class="error" id="ee"></div></div>`;document.body.append(d);
+ $('#sv').onclick=async()=>{try{await api('claims/'+id,'PATCH',{status:$('#es').value,approved_amount:$('#ea').value,paid_amount:$('#ep').value,rejection_reason:$('#er').value});d.remove();claims()}catch(e){$('#ee').textContent=e.message}}}
+async function imp(){const w=me.role!='viewer';
+ $('#main').innerHTML=`<div class="card"><b>Import claims (CSV)</b><p class="k">Columns: claim_no, insurer, patient_ref, service_date (YYYY-MM-DD), service_code, description, claimed_amount, submitted_date, status, approved_amount, paid_amount, rejection_reason. Only <b>claim_no</b> is mandatory; use authorised or de-identified data (patient_ref should be a pseudonymous reference, not a name).</p>
+ <input type="file" id="f" accept=".csv" ${w?'':'disabled'}><textarea id="t" placeholder="…or paste CSV here"></textarea><div class="row"><button class="btn p" onclick="doImp('claims')" ${w?'':'disabled'}>Import claims</button>${me.role=='admin'?'<button class="btn" onclick="seed()">Load synthetic demo data</button>':''}</div><pre id="out"></pre></div>`;
+ $('#f').onchange=e=>e.target.files[0].text().then(t=>$('#t').value=t)}
+async function doImp(k){try{const r=await api(k=='claims'?'claims/import':'tariffs/import','POST',{csv:$('#t').value});$('#out').textContent=JSON.stringify(r,null,2)}catch(e){$('#out').textContent=e.message}}
+async function seed(){$('#out').textContent=JSON.stringify(await api('seed','POST'),null,2)}
+async function rules(){const [r,t]=await Promise.all([api('rules'),api('tariffs')]);const a=me.role=='admin';
+ $('#main').innerHTML=`<div class="card wrap"><b>Insurer rules (versioned)</b><table><tr><th>ID</th><th>Type</th><th>Insurer</th><th>Parameter</th><th>Source / note</th><th>Effective</th><th>v</th><th>Active</th></tr>
+ ${r.map(x=>`<tr><td>${x.id}</td><td>${x.type}</td><td>${esc(x.insurer)}</td><td>${esc(x.param)}</td><td style="white-space:normal">${esc(x.source)}</td><td>${x.effective_date}</td><td>${x.version}</td><td><input type="checkbox" ${x.active?'checked':''} ${a?'':'disabled'} onchange="api('rules/${x.id}/toggle','POST').then(()=>rules())"></td></tr>`).join('')}</table>
+ ${a?`<div class="row" style="margin-top:12px"><select id="rt"><option>deadline</option><option>required</option><option>positive</option><option>duplicate</option><option>tariff</option></select><input id="ri" placeholder="Insurer or *" value="*"><input id="rp" placeholder="Param (days / fields)"><input id="rs" placeholder="Source reference"><button class="btn p" onclick="addRule()">Add rule</button></div>`:''}</div>
+ <div class="card"><b>Tariffs (${t.length})</b>${a?`<p class="k">CSV columns: insurer, code, amount</p><textarea id="t"></textarea><button class="btn p" onclick="doImp('tariffs').then(rules)">Import tariffs</button><pre id="out"></pre>`:''}
+ <div class="wrap"><table><tr><th>Insurer</th><th>Code</th><th>Amount</th></tr>${t.slice(0,50).map(x=>`<tr><td>${esc(x.insurer)}</td><td>${esc(x.code)}</td><td>${money(x.amount)}</td></tr>`).join('')}</table></div></div>`}
+async function addRule(){await api('rules','POST',{type:$('#rt').value,insurer:$('#ri').value,param:$('#rp').value,source:$('#rs').value});rules()}
+async function recon(){const d=await api('dashboard');$('#main').innerHTML=`<div class="card wrap"><b>Reconciliation — items for human review (${d.discrepancies.length})</b><table><tr><th>Claim</th><th>Insurer</th><th>Issue</th><th>Claimed</th><th>Approved</th><th>Paid</th><th>Variance</th></tr>
+ ${d.discrepancies.map(x=>`<tr><td>${esc(x.claim_no)}</td><td>${esc(x.insurer)}</td><td>${esc(x.issue)}</td><td>${money(x.claimed)}</td><td>${money(x.approved)}</td><td>${money(x.paid)}</td><td class="${x.variance<0?'error':''}">${x.variance==null?'-':money(x.variance)}</td></tr>`).join('')}</table></div>`}
+async function audit(){const a=await api('audit');$('#main').innerHTML=`<div class="card wrap"><b>Audit log</b><table><tr><th>Time (UTC)</th><th>User</th><th>Action</th><th>Detail</th></tr>${a.map(x=>`<tr><td>${x.ts}</td><td>${esc(x.user)}</td><td>${x.action}</td><td style="white-space:normal">${esc(x.detail)}</td></tr>`).join('')}</table></div>`}
+document.addEventListener('keydown',e=>{if(e.key=='Enter'&&!$('#login').hidden)login()});
+api('me').then(u=>{me=u;start()}).catch(()=>{});
+</script></body></html>
